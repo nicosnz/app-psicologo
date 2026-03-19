@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="/src/style.css"/>
+    <script defer type="module" src="/src/main.js"></script>
+    <title>Reservar Citas</title>
+  </head>
+  <body>
+
+    <!-- ── Modo toggle ─────────────────────────────────────── -->
+    <div id="modo-toggle-bar">
+      <button id="btn-modo-cliente" class="btn-modo">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+        </svg>
+        Modo cliente
+      </button>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════ -->
+    <!--  VISTA ADMIN                                          -->
+    <!-- ══════════════════════════════════════════════════════ -->
+    <main id="vista-admin">
+      <h1>Gestión de Reservas</h1>
+      <div class="layout">
+
+        <aside id="sidebar-pendientes">
+          <div class="sidebar-header">
+            <span class="sidebar-titulo">Citas pendientes</span>
+            <span class="sidebar-badge" id="badge-pendientes">0</span>
+          </div>
+          <ul id="lista-pendientes">
+            <li class="pendiente-vacio">Sin citas pendientes</li>
+          </ul>
+        </aside>
+
+        <div class="calendar" id="calendar-admin"></div>
+      </div>
+    </main>
+
+    <!-- ══════════════════════════════════════════════════════ -->
+    <!--  VISTA CLIENTE                                        -->
+    <!-- ══════════════════════════════════════════════════════ -->
+    <main id="vista-cliente" class="oculto">
+      <h1>Reservar Cita</h1>
+      <div class="layout">
+
+        <aside id="sidebar-proximas">
+          <div class="sidebar-header">
+            <span class="sidebar-titulo">Próximas citas</span>
+            <span class="sidebar-badge" id="badge-proximas">0</span>
+          </div>
+          <ul id="lista-proximas">
+            <li class="pendiente-vacio">Sin citas agendadas</li>
+          </ul>
+        </aside>
+
+        <div class="calendar" id="calendar-cliente"></div>
+      </div>
+    </main>
+
+    <!-- ── Overlay ─────────────────────────────────────────── -->
+    <div id="modal-overlay"></div>
+
+    <!-- ══════════════════════════════════════════════════════ -->
+    <!--  MODAL DETALLE CITA (admin)                           -->
+    <!-- ══════════════════════════════════════════════════════ -->
+    <div id="modal-detalle" role="dialog" aria-modal="true" aria-labelledby="detalle-titulo">
+      <div class="modal-header">
+        <span>Detalle de la cita</span>
+        <button id="modal-detalle-cerrar" aria-label="Cerrar">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M2 2l12 12M14 2L2 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="detalle-body">
+        <!-- Título + estado -->
+        <div class="detalle-row detalle-titulo-row">
+          <span id="detalle-titulo" class="detalle-titulo-txt"></span>
+          <span id="detalle-estado" class="estado-badge"></span>
+        </div>
+
+        <!-- Paciente -->
+        <div class="detalle-row">
+          <span class="detalle-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </span>
+          <div class="detalle-data">
+            <span class="detalle-label">Paciente</span>
+            <span id="detalle-paciente" class="detalle-value"></span>
+          </div>
+        </div>
+
+        <!-- Horario -->
+        <div class="detalle-row">
+          <span class="detalle-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </span>
+          <div class="detalle-data">
+            <span class="detalle-label">Horario</span>
+            <span id="detalle-horario" class="detalle-value"></span>
+          </div>
+        </div>
+
+        <!-- Notas (oculto si vacío) -->
+        <div class="detalle-row" id="detalle-notas-row">
+          <span class="detalle-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          </span>
+          <div class="detalle-data">
+            <span class="detalle-label">Notas del paciente</span>
+            <span id="detalle-notas" class="detalle-value detalle-notas-txt"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Error de conflicto -->
+      <div id="detalle-conflicto" class="form-error detalle-conflicto"></div>
+
+      <!-- Acciones (solo cuando está Pendiente) -->
+      <div id="detalle-acciones" class="detalle-acciones">
+        <button id="btn-rechazar" class="btn-rechazar">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          Rechazar
+        </button>
+        <button id="btn-confirmar" class="btn-confirmar">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          Confirmar cita
+        </button>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════ -->
+    <!--  MODAL ADMIN                                         -->
+    <!-- ══════════════════════════════════════════════════════ -->
+    <div id="modal-evento" role="dialog" aria-modal="true" aria-labelledby="modal-titulo">
+      <div class="modal-header">
+        <span id="modal-titulo">Nuevo evento</span>
+        <button id="modal-cerrar" aria-label="Cerrar">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M2 2l12 12M14 2L2 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <form id="form-evento" novalidate>
+
+        <!-- ── Título ── -->
+        <div class="campo">
+          <label for="evento-titulo">Título de la cita</label>
+          <input id="evento-titulo" type="text" placeholder="Ej: Sesión inicial, Seguimiento..." required />
+        </div>
+
+        <!-- ── Selector de paciente ── -->
+        <div class="campo">
+          <div class="paciente-label-row">
+            <label>Paciente</label>
+            <button type="button" id="btn-nuevo-paciente" class="btn-link-nuevo">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Nuevo paciente
+            </button>
+          </div>
+
+          <!-- Chip paciente seleccionado -->
+          <div id="paciente-selected" class="paciente-chip">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <div class="paciente-chip-info">
+              <span id="paciente-nombre-sel"></span>
+              <span id="paciente-tel-sel" class="chip-tel"></span>
+            </div>
+            <button type="button" id="paciente-clear" class="chip-clear" aria-label="Quitar paciente">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M2 2l12 12M14 2L2 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+
+          <!-- Input búsqueda -->
+          <div class="paciente-search-wrap">
+            <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input id="paciente-search" type="text" placeholder="Buscar paciente por nombre…" autocomplete="off" />
+          </div>
+
+          <!-- Dropdown -->
+          <ul id="paciente-dropdown" class="paciente-dropdown"></ul>
+        </div>
+
+        <!-- ── Formulario nuevo paciente (oculto por defecto) ── -->
+        <div id="form-nuevo-paciente" class="form-nuevo-paciente">
+          <div class="fnp-header">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            Nuevo paciente
+          </div>
+          <div class="campo-fila">
+            <div class="campo">
+              <label for="np-nombre">Nombre</label>
+              <input id="np-nombre" type="text" placeholder="Ej: María" />
+            </div>
+            <div class="campo">
+              <label for="np-apellido">Apellido</label>
+              <input id="np-apellido" type="text" placeholder="Ej: López" />
+            </div>
+          </div>
+          <div class="campo">
+            <label for="np-telefono">Teléfono</label>
+            <input id="np-telefono" type="tel" placeholder="Ej: 591-70000000" />
+          </div>
+          <div id="np-error" class="form-error"></div>
+          <div class="fnp-footer">
+            <button type="button" id="np-cancelar" class="modal-cerrar-btn">Cancelar</button>
+            <button type="button" id="np-guardar" class="btn-primary">Agregar paciente</button>
+          </div>
+        </div>
+
+        <!-- ── Todo el día ── -->
+        <div class="campo campo-check">
+          <label for="evento-todo-dia">
+            <input id="evento-todo-dia" type="checkbox" /> Todo el día
+          </label>
+        </div>
+
+        <!-- ── Horas ── -->
+        <div id="fila-horas" class="campo-fila">
+          <div class="campo">
+            <label for="evento-inicio">Inicio</label>
+            <input id="evento-inicio" type="datetime-local" required />
+          </div>
+          <div class="campo">
+            <label for="evento-fin">Fin</label>
+            <input id="evento-fin" type="datetime-local" required />
+          </div>
+        </div>
+
+        <!-- ── Color ── -->
+        <div class="campo campo-color">
+          <label for="evento-color">Color</label>
+          <div class="color-row">
+            <input id="evento-color" type="color" value="#22c55e" />
+            <span class="color-hint">Color del evento en el calendario</span>
+          </div>
+        </div>
+
+        <!-- ── Descripción ── -->
+        <div class="campo">
+          <label for="evento-descripcion">Descripción <span class="opcional">(opcional)</span></label>
+          <textarea id="evento-descripcion" rows="2" placeholder="Notas adicionales..."></textarea>
+        </div>
+
+        <div id="form-error" class="form-error"></div>
+        <div class="modal-footer">
+          <button type="button" class="modal-cerrar-btn">Cancelar</button>
+          <button type="submit" class="btn-primary">Guardar evento</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════ -->
+    <!--  MODAL CLIENTE: solicitar cita                        -->
+    <!-- ══════════════════════════════════════════════════════ -->
+    <div id="modal-cliente" role="dialog" aria-modal="true" >
+      <div class="modal-header">
+        <span>Solicitar cita</span>
+        <button id="modal-cliente-cerrar" aria-label="Cerrar">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M2 2l12 12M14 2L2 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <form id="form-cliente" novalidate>
+        <div class="campo">
+          <label for="cli-nombre">Tu nombre</label>
+          <input id="cli-nombre" type="text" placeholder="Ej: María García" required />
+        </div>
+        <div class="campo">
+          <label for="cli-motivo">Motivo de la cita</label>
+          <input id="cli-motivo" type="text" placeholder="Ej: Consulta general" required />
+        </div>
+        <div id="cli-fila-horas" class="campo-fila">
+          <div class="campo">
+            <label for="cli-inicio">Inicio</label>
+            <input id="cli-inicio" type="datetime-local" required />
+          </div>
+          <div class="campo">
+            <label for="cli-fin">Fin</label>
+            <input id="cli-fin" type="datetime-local" required />
+          </div>
+        </div>
+        <div class="campo">
+          <label for="cli-notas">Notas <span class="opcional">(opcional)</span></label>
+          <textarea id="cli-notas" rows="2" placeholder="Información adicional..."></textarea>
+        </div>
+        <div id="cli-error" class="form-error"></div>
+        <div class="modal-footer">
+          <button type="button" class="modal-cerrar-btn">Cancelar</button>
+          <button type="submit" class="btn-primary">Enviar solicitud</button>
+        </div>
+      </form>
+    </div>
+
+  </body>
+</html>
