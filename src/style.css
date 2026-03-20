@@ -1210,3 +1210,100 @@ input[type="datetime-local"] {
 .detalle-conflicto {
   margin: 0 1.4rem;
 }
+/* ── Botón Reprogramar en modal detalle ─────────────────────── */
+.btn-reprogramar {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .45rem;
+  font-family: var(--font);
+  font-size: .83rem;
+  font-weight: 600;
+  padding: .6rem 1rem;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all .18s ease;
+  background: rgba(139,92,246,.1);
+  border: 1px solid rgba(139,92,246,.3);
+  color: #a78bfa;
+}
+ 
+.btn-reprogramar:hover {
+  background: rgba(139,92,246,.2);
+  border-color: rgba(139,92,246,.55);
+  box-shadow: 0 2px 14px rgba(139,92,246,.25);
+}
+ 
+/* ── Contraoferta en sidebar cliente ────────────────────────── */
+.pendiente-info-full {
+  flex: 1;
+  min-width: 0;
+}
+ 
+.contraoferta-box {
+  margin-top: .55rem;
+  background: rgba(139,92,246,.08);
+  border: 1px solid rgba(139,92,246,.25);
+  border-radius: 8px;
+  padding: .6rem .75rem;
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+ 
+.contraoferta-label {
+  font-size: .65rem;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: #a78bfa;
+}
+ 
+.contraoferta-horario {
+  font-size: .78rem;
+  font-family: var(--font-mono);
+  color: var(--text-1);
+  font-weight: 500;
+}
+ 
+.contraoferta-acciones {
+  display: flex;
+  gap: .5rem;
+  margin-top: .15rem;
+}
+ 
+.btn-co-rechazar,
+.btn-co-aceptar {
+  flex: 1;
+  font-family: var(--font);
+  font-size: .72rem;
+  font-weight: 600;
+  padding: .35rem .6rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all .15s ease;
+  border: 1px solid;
+}
+ 
+.btn-co-rechazar {
+  background: rgba(239,68,68,.08);
+  border-color: rgba(239,68,68,.25);
+  color: #f87171;
+}
+ 
+.btn-co-rechazar:hover {
+  background: rgba(239,68,68,.18);
+  border-color: rgba(239,68,68,.5);
+}
+ 
+.btn-co-aceptar {
+  background: rgba(34,197,94,.08);
+  border-color: rgba(34,197,94,.25);
+  color: #4ade80;
+}
+ 
+.btn-co-aceptar:hover {
+  background: rgba(34,197,94,.18);
+  border-color: rgba(34,197,94,.5);
+}

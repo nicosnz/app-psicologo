@@ -4,16 +4,17 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import listPlugin from '@fullcalendar/list';
 import interactionPlugin from '@fullcalendar/interaction';
+import supabase from './services/supabase.js';
 
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
 
   /* ══════════════════════════════════════════════════════════
      CONFIGURACIÓN
   ══════════════════════════════════════════════════════════ */
   const DIAS_LABORALES = [1, 2, 3, 4, 5];
-  const HORA_MIN = 8;
-  const HORA_MAX = 20;
+  const HORA_MIN = 9;
+  const HORA_MAX = 21;
 
   const ESTADO_COLOR = {
     Pendiente:    '#f59e0b',
@@ -24,22 +25,17 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   /* ── Estado compartido entre vistas ──────────────────────── */
-  let citasAdmin    = [];
-  let citasCliente  = [];
+  let citasAdmin   = [];
+  let citasCliente = [];
+  let pacientes    = [];
 
-  /* ── Lista de pacientes ──────────────────────────────────── */
-  let pacientes = [
-    { id: 1, nombre: 'Ana', apellido: 'García',   telefono: '591-70011111' },
-    { id: 2, nombre: 'Luis', apellido: 'Mamani',  telefono: '591-70022222' },
-    { id: 3, nombre: 'Carla', apellido: 'Quispe', telefono: '591-70033333' },
-  ];
-  let nextPacienteId = 4;
-  let pacienteSeleccionado = null; // { id, nombre, apellido, telefono } | null
+  let pacienteSeleccionado = null;
+  const PACIENTE_ID_CLIENTE = '8a3e0661-d149-49f1-a22f-4701d42050c4';
+  let pacienteCliente = { nombre: 'Paciente', apellido: '', telefono: '' };
 
   /* ══════════════════════════════════════════════════════════
      HELPERS FECHA / HORA
   ══════════════════════════════════════════════════════════ */
-
   function hoy() {
     const h = new Date();
     return new Date(h.getFullYear(), h.getMonth(), h.getDate());
@@ -96,21 +92,25 @@ document.addEventListener('DOMContentLoaded', () => {
       return `El horario debe estar entre las ${HORA_MIN}:00 y las ${HORA_MAX}:00.`;
     if (dateFin <= dateInicio)       return 'La hora de fin debe ser posterior a la de inicio.';
     if (dateFin.toDateString() !== dateInicio.toDateString()) return 'La cita no puede extenderse a otro día.';
+    if ((dateFin - dateInicio) > 60 * 60 * 1000) return 'La cita no puede durar más de una hora.';
     return null;
   }
 
   function detectarConflicto({ inicio, fin }) {
     const newIni = new Date(inicio).getTime();
     const newFin = new Date(fin).getTime();
-    // Solo revisar citas que no estén rechazadas/canceladas
     const activas = citasAdmin.filter(c => {
-      const estado = c.citaCliente?.estado;
-      return estado !== 'Rechazada' && estado !== 'Cancelada';
+      // Citas del cliente: excluir rechazadas/canceladas
+      if (c.esSolicitudCliente) {
+        const estado = c.citaCliente?.estado;
+        return estado !== 'Rechazada' && estado !== 'Cancelada';
+      }
+      // Citas del admin: siempre activas (ya están confirmadas)
+      return true;
     });
     const conflicto = activas.find(c => {
       const cIni = new Date(c.inicio).getTime();
       const cFin = new Date(c.fin).getTime();
-      // Hay solapamiento si el nuevo rango se cruza con el existente
       return newIni < cFin && newFin > cIni;
     });
     if (!conflicto) return null;
@@ -118,6 +118,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const cfFin = new Date(conflicto.fin);
     const fmt = { hour: '2-digit', minute: '2-digit' };
     return `Ya tienes una cita agendada de ${cfIni.toLocaleTimeString('es', fmt)} a ${cfFin.toLocaleTimeString('es', fmt)}. Intenta con otro horario.`;
+  }
+
+  // Convierte string "YYYY-MM-DDTHH:mm" (hora local) a ISO UTC para Supabase
+  function toUTC(localStr) {
+    return new Date(localStr).toISOString();
+  }
+
+  // Convierte timestamp UTC de Supabase a "YYYY-MM-DDTHH:mm" en hora local
+  function toLocal(utcStr) {
+    const d = new Date(utcStr);
+    const yyyy = d.getFullYear();
+    const mm   = String(d.getMonth() + 1).padStart(2, '0');
+    const dd   = String(d.getDate()).padStart(2, '0');
+    const hh   = String(d.getHours()).padStart(2, '0');
+    const min  = String(d.getMinutes()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
   }
 
   function bindInputRestricciones(inputI, inputF, errorEl) {
@@ -151,24 +167,106 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /* ══════════════════════════════════════════════════════════
+     SUPABASE — CARGA INICIAL
+  ══════════════════════════════════════════════════════════ */
+  async function cargarDatos() {
+    // Pacientes
+    const { data: pacs, error: errPacs } = await supabase
+      .from('pacientes')
+      .select('*')
+      .order('creado_en', { ascending: true });
+
+    if (errPacs) console.error('Error cargando pacientes:', errPacs);
+    else pacientes = pacs.map(p => ({ id: p.id, nombre: p.nombre, apellido: p.apellido, telefono: p.telefono }));
+
+    // Guardar datos del paciente cliente para mostrarlo en el modal
+    pacienteCliente = pacientes.find(p => p.id === PACIENTE_ID_CLIENTE) || { nombre: 'Paciente', apellido: '', telefono: '' };
+
+    // Citas (con join a pacientes)
+    const { data: citas, error: errCitas } = await supabase
+      .from('citas')
+      .select('*, pacientes(id, nombre, apellido, telefono)')
+      .order('inicio', { ascending: true });
+
+    if (errCitas) { console.error('Error cargando citas:', errCitas); return; }
+
+    citas.forEach(c => {
+      const paciente = c.pacientes || null;
+      const color    = ESTADO_COLOR[c.estado] || c.color || '#22c55e';
+
+      if (c.origen === 'admin') {
+        const entry = {
+          id: c.id, titulo: c.titulo, paciente,
+          inicio: toLocal(c.inicio), fin: toLocal(c.fin),
+          color, todoElDia: c.todo_el_dia, esSolicitudCliente: false,
+        };
+        citasAdmin.push(entry);
+        const label = paciente ? `${c.titulo} · ${paciente.nombre} ${paciente.apellido}` : c.titulo;
+        calAdmin.addEvent({
+          title: label, start: c.inicio, end: c.fin, allDay: c.todo_el_dia,
+          backgroundColor: color, borderColor: color,
+          extendedProps: { adminEntry: entry },
+        });
+
+      } else {
+        // origen === 'cliente'
+        const citaCliente = {
+          id: c.id, motivo: c.titulo,
+          inicio: toLocal(c.inicio), fin: toLocal(c.fin), notas: c.cli_notas, estado: c.estado,
+          inicioPropuesto: c.inicio_propuesto ? toLocal(c.inicio_propuesto) : null,
+          finPropuesto:    c.fin_propuesto    ? toLocal(c.fin_propuesto)    : null,
+        };
+        citasCliente.push(citaCliente);
+
+        const fcEventCliente = calCliente.addEvent({
+          title: c.titulo,
+          start: c.inicio, end: c.fin,
+          backgroundColor: color, borderColor: color,
+          extendedProps: { cita: citaCliente },
+        });
+
+        const prefijo = c.estado === 'Confirmada' ? '✅' : c.estado === 'Rechazada' ? '❌' : '⏳';
+        const adminEntry = {
+          id: c.id, titulo: c.titulo,
+          paciente: paciente || pacienteCliente,
+          inicio: toLocal(c.inicio), fin: toLocal(c.fin), color,
+          todoElDia: false, esSolicitudCliente: true,
+          citaCliente, fcEventCliente,
+        };
+        citasAdmin.push(adminEntry);
+        const fcEventAdmin = calAdmin.addEvent({
+          title: `${prefijo} ${c.titulo}`,
+          start: c.inicio, end: c.fin,
+          backgroundColor: color, borderColor: color,
+          extendedProps: { adminEntry },
+        });
+        adminEntry.fcEventAdmin = fcEventAdmin;
+      }
+    });
+
+    renderSidebarAdmin();
+    renderSidebarCliente();
+  }
+
+  /* ══════════════════════════════════════════════════════════
      SELECTOR DE PACIENTES
   ══════════════════════════════════════════════════════════ */
-  const pacienteSearch     = document.getElementById('paciente-search');
-  const pacienteDropdown   = document.getElementById('paciente-dropdown');
-  const pacienteSelected   = document.getElementById('paciente-selected');
-  const pacienteNombreEl   = document.getElementById('paciente-nombre-sel');
-  const pacienteTelEl      = document.getElementById('paciente-tel-sel');
-  const pacienteClear      = document.getElementById('paciente-clear');
-  const btnNuevoPaciente   = document.getElementById('btn-nuevo-paciente');
-  const formNuevoPaciente  = document.getElementById('form-nuevo-paciente');
-  const npNombre           = document.getElementById('np-nombre');
-  const npApellido         = document.getElementById('np-apellido');
-  const npTelefono         = document.getElementById('np-telefono');
-  const npGuardar          = document.getElementById('np-guardar');
-  const npCancelar         = document.getElementById('np-cancelar');
-  const npError            = document.getElementById('np-error');
+  const pacienteSearch    = document.getElementById('paciente-search');
+  const pacienteDropdown  = document.getElementById('paciente-dropdown');
+  const pacienteSelected  = document.getElementById('paciente-selected');
+  const pacienteNombreEl  = document.getElementById('paciente-nombre-sel');
+  const pacienteTelEl     = document.getElementById('paciente-tel-sel');
+  const pacienteClear     = document.getElementById('paciente-clear');
+  const btnNuevoPaciente  = document.getElementById('btn-nuevo-paciente');
+  const formNuevoPaciente = document.getElementById('form-nuevo-paciente');
+  const npNombre          = document.getElementById('np-nombre');
+  const npApellido        = document.getElementById('np-apellido');
+  const npTelefono        = document.getElementById('np-telefono');
+  const npGuardar         = document.getElementById('np-guardar');
+  const npCancelar        = document.getElementById('np-cancelar');
+  const npError           = document.getElementById('np-error');
 
-  function nombreCompleto(p) { return `${p.nombre} ${p.apellido}`; }
+  function nombreCompleto(p) { return `${p.nombre} ${p.apellido}`.trim(); }
 
   function renderDropdown(filtro = '') {
     const q = filtro.trim().toLowerCase();
@@ -184,31 +282,22 @@ document.addEventListener('DOMContentLoaded', () => {
       lista.forEach(p => {
         const li = document.createElement('li');
         li.className = 'pd-item';
-        li.dataset.id = p.id;
         li.innerHTML = `
           <span class="pd-avatar">${p.nombre[0]}${p.apellido[0]}</span>
           <span class="pd-info">
             <span class="pd-nombre">${nombreCompleto(p)}</span>
             <span class="pd-tel">${p.telefono}</span>
           </span>`;
-        li.addEventListener('mousedown', (e) => {
-          e.preventDefault();
-          seleccionarPaciente(p);
-        });
+        li.addEventListener('mousedown', (e) => { e.preventDefault(); seleccionarPaciente(p); });
         pacienteDropdown.appendChild(li);
       });
     }
 
-    // Siempre mostrar opción agregar nuevo
     const liNuevo = document.createElement('li');
     liNuevo.className = 'pd-nuevo';
     liNuevo.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Agregar nuevo paciente`;
-    liNuevo.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      abrirFormNuevoPaciente();
-    });
+    liNuevo.addEventListener('mousedown', (e) => { e.preventDefault(); abrirFormNuevoPaciente(); });
     pacienteDropdown.appendChild(liNuevo);
-
     pacienteDropdown.classList.add('visible');
   }
 
@@ -230,16 +319,13 @@ document.addEventListener('DOMContentLoaded', () => {
     cerrarDropdown();
   }
 
-  function cerrarDropdown() {
-    pacienteDropdown.classList.remove('visible');
-  }
+  function cerrarDropdown() { pacienteDropdown.classList.remove('visible'); }
 
   pacienteSearch.addEventListener('focus', () => renderDropdown(pacienteSearch.value));
   pacienteSearch.addEventListener('input', () => renderDropdown(pacienteSearch.value));
   pacienteSearch.addEventListener('blur',  () => setTimeout(cerrarDropdown, 150));
   pacienteClear.addEventListener('click', limpiarPaciente);
 
-  // — Formulario nuevo paciente —
   function abrirFormNuevoPaciente() {
     cerrarDropdown();
     npNombre.value = ''; npApellido.value = ''; npTelefono.value = '';
@@ -248,14 +334,12 @@ document.addEventListener('DOMContentLoaded', () => {
     npNombre.focus();
   }
 
-  function cerrarFormNuevoPaciente() {
-    formNuevoPaciente.classList.remove('visible');
-  }
+  function cerrarFormNuevoPaciente() { formNuevoPaciente.classList.remove('visible'); }
 
   btnNuevoPaciente.addEventListener('click', abrirFormNuevoPaciente);
   npCancelar.addEventListener('click', cerrarFormNuevoPaciente);
 
-  npGuardar.addEventListener('click', () => {
+  npGuardar.addEventListener('click', async () => {
     npError.classList.remove('visible');
     const nombre   = npNombre.value.trim();
     const apellido = npApellido.value.trim();
@@ -265,7 +349,22 @@ document.addEventListener('DOMContentLoaded', () => {
       npError.classList.add('visible');
       return;
     }
-    const nuevo = { id: nextPacienteId++, nombre, apellido, telefono };
+
+    // — Supabase: insertar paciente —
+    const { data, error } = await supabase
+      .from('pacientes')
+      .insert({ nombre, apellido, telefono })
+      .select()
+      .single();
+
+    if (error) {
+      npError.textContent = 'Error al guardar el paciente. Intenta de nuevo.';
+      npError.classList.add('visible');
+      console.error(error);
+      return;
+    }
+
+    const nuevo = { id: data.id, nombre: data.nombre, apellido: data.apellido, telefono: data.telefono };
     pacientes.push(nuevo);
     cerrarFormNuevoPaciente();
     seleccionarPaciente(nuevo);
@@ -327,7 +426,7 @@ document.addEventListener('DOMContentLoaded', () => {
         : '';
 
       const li = document.createElement('li');
-      li.className = 'pendiente-item' + (ev.esSolicitudCliente ? ' pendiente-clickable' : '');
+      li.className = 'pendiente-item pendiente-clickable';
       li.innerHTML = `
         <span class="pendiente-dot" style="background:${ev.color}"></span>
         <div class="pendiente-info">
@@ -340,25 +439,49 @@ document.addEventListener('DOMContentLoaded', () => {
           ${ev.esSolicitudCliente ? `<span class="tag-solicitud">${ev.citaCliente?.estado || 'Pendiente'}</span>` : ''}
         </div>`;
 
-      if (ev.esSolicitudCliente) {
-        li.addEventListener('click', () => abrirModalDetalleCita(ev, ev.fcEventAdmin));
-      }
+      li.addEventListener('click', () => abrirModalDetalleCita(ev, ev.fcEventAdmin));
       listaPendientes.appendChild(li);
     });
   }
 
-  function agregarEvento({ titulo, paciente, inicio, fin, color, descripcion, todoElDia = false }) {
+  async function agregarEvento({ titulo, paciente, inicio, fin, color, descripcion, todoElDia = false }) {
     if (!titulo || !inicio || !fin) return null;
-    const label = paciente ? `${titulo} · ${nombreCompleto(paciente)}` : titulo;
-    const evento = {
-      title: label, start: inicio, end: fin, allDay: todoElDia,
-      ...(color       && { backgroundColor: color, borderColor: color }),
-      ...(descripcion && { extendedProps: { descripcion } }),
+
+    // — Supabase: insertar cita admin —
+    const { data, error } = await supabase
+      .from('citas')
+      .insert({
+        paciente_id: paciente?.id || null,
+        titulo,
+        descripcion: descripcion || null,
+        inicio: toUTC(inicio),
+        fin: toUTC(fin),
+        todo_el_dia: todoElDia,
+        color: color || '#22c55e',
+        estado: 'Confirmada',
+        origen: 'admin',
+      })
+      .select()
+      .single();
+
+    if (error) { console.error('Error guardando cita:', error); return null; }
+
+    const entry = {
+      id: data.id, titulo, paciente,
+      inicio, fin, color: color || '#22c55e',
+      todoElDia, esSolicitudCliente: false,
     };
-    calAdmin.addEvent(evento);
-    citasAdmin.push({ titulo, paciente, inicio, fin, color: color || '#22c55e', todoElDia });
+    citasAdmin.push(entry);
+
+    const label = paciente ? `${titulo} · ${nombreCompleto(paciente)}` : titulo;
+    calAdmin.addEvent({
+      title: label, start: inicio, end: fin, allDay: todoElDia,
+      backgroundColor: color, borderColor: color,
+      extendedProps: { adminEntry: entry },
+    });
+
     renderSidebarAdmin();
-    return evento;
+    return entry;
   }
 
   // — Modal admin —
@@ -399,7 +522,7 @@ document.addEventListener('DOMContentLoaded', () => {
     inputTitulo.focus();
   }
 
-  formAdmin.addEventListener('submit', (e) => {
+  formAdmin.addEventListener('submit', async (e) => {
     e.preventDefault(); limpiarErrAdmin();
     if (!pacienteSeleccionado) {
       mostrarErrAdmin('Selecciona un paciente para la cita.');
@@ -409,7 +532,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (err) { mostrarErrAdmin(err); return; }
     const conflicto = detectarConflicto({ inicio: inputInicio.value, fin: inputFin.value });
     if (conflicto) { mostrarErrAdmin(conflicto); return; }
-    agregarEvento({
+
+    await agregarEvento({
       titulo: inputTitulo.value.trim(),
       paciente: pacienteSeleccionado,
       inicio: inputInicio.value, fin: inputFin.value,
@@ -432,51 +556,165 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderSidebarCliente() {
     const activas = citasCliente.filter(c => c.estado !== 'Cancelada' && c.estado !== 'Rechazada');
     badgeProximas.textContent = activas.length;
+    listaProximas.innerHTML = '';
     if (!citasCliente.length) { listaProximas.innerHTML = '<li class="pendiente-vacio">Sin citas agendadas</li>'; return; }
     const ord = [...citasCliente].sort((a, b) => new Date(a.inicio) - new Date(b.inicio));
-    listaProximas.innerHTML = ord.map(ev => {
+    ord.forEach(ev => {
       const ini   = new Date(ev.inicio);
       const fecha  = ini.toLocaleDateString('es', { day: '2-digit', month: 'short' });
       const hora   = ini.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
       const color  = ESTADO_COLOR[ev.estado] || '#22c55e';
-      return `<li class="pendiente-item">
-        <span class="pendiente-dot" style="background:${color}"></span>
-        <div class="pendiente-info">
-          <div class="pendiente-titulo" title="${ev.motivo}">${ev.motivo}</div>
-          <div class="pendiente-hora">${hora}</div>
-        </div>
-        <div class="pendiente-right">
-          <span class="pendiente-fecha">${fecha}</span>
-          <span class="estado-badge" style="background:${color}20;color:${color};border-color:${color}40">${ev.estado}</span>
-        </div>
-      </li>`;
-    }).join('');
+
+      const li = document.createElement('li');
+      li.className = 'pendiente-item';
+
+      // Si está reprogramada y hay contraoferta, mostrar panel especial
+      if (ev.estado === 'Reprogramada' && ev.inicioPropuesto) {
+        const iniP  = new Date(ev.inicioPropuesto);
+        const finP  = new Date(ev.finPropuesto);
+        const fmtT  = { hour: '2-digit', minute: '2-digit' };
+        const fmtD  = { day: '2-digit', month: 'short' };
+        li.innerHTML = `
+          <span class="pendiente-dot" style="background:${color}"></span>
+          <div class="pendiente-info pendiente-info-full">
+            <div class="pendiente-titulo">${ev.motivo}</div>
+            <div class="pendiente-hora">${hora} · <span style="color:${color}">Reprogramada</span></div>
+            <div class="contraoferta-box">
+              <span class="contraoferta-label">Nueva propuesta</span>
+              <span class="contraoferta-horario">
+                ${iniP.toLocaleDateString('es', fmtD)} · ${iniP.toLocaleTimeString('es', fmtT)} – ${finP.toLocaleTimeString('es', fmtT)}
+              </span>
+              <div class="contraoferta-acciones">
+                <button class="btn-co-rechazar">✕ Rechazar</button>
+                <button class="btn-co-aceptar">✓ Aceptar</button>
+              </div>
+            </div>
+          </div>`;
+
+        li.querySelector('.btn-co-aceptar').addEventListener('click', () => responderContraoferta(ev, 'Confirmada'));
+        li.querySelector('.btn-co-rechazar').addEventListener('click', () => responderContraoferta(ev, 'Rechazada'));
+      } else {
+        li.innerHTML = `
+          <span class="pendiente-dot" style="background:${color}"></span>
+          <div class="pendiente-info">
+            <div class="pendiente-titulo" title="${ev.motivo}">${ev.motivo}</div>
+            <div class="pendiente-hora">${hora}</div>
+          </div>
+          <div class="pendiente-right">
+            <span class="pendiente-fecha">${fecha}</span>
+            <span class="estado-badge" style="background:${color}20;color:${color};border-color:${color}40">${ev.estado}</span>
+          </div>`;
+      }
+      listaProximas.appendChild(li);
+    });
   }
 
-  function agregarCitaCliente({ nombre, motivo, inicio, fin, notas }) {
+  async function responderContraoferta(citaCli, decision) {
+    const adminEntry = citasAdmin.find(c => c.citaCliente === citaCli);
+    const nuevoEstado = decision;
+    const nuevoInicio = decision === 'Confirmada' ? citaCli.inicioPropuesto : citaCli.inicio;
+    const nuevoFin    = decision === 'Confirmada' ? citaCli.finPropuesto    : citaCli.fin;
+
+    const updateData = { estado: nuevoEstado };
+    if (decision === 'Confirmada') {
+      updateData.inicio = toUTC(nuevoInicio);
+      updateData.fin    = toUTC(nuevoFin);
+    }
+
+    const { error } = await supabase
+      .from('citas')
+      .update(updateData)
+      .eq('id', citaCli.id);
+
+    if (error) { console.error('Error respondiendo contraoferta:', error); return; }
+
+    const color = ESTADO_COLOR[nuevoEstado];
+    citaCli.estado = nuevoEstado;
+    if (decision === 'Confirmada') {
+      citaCli.inicio = nuevoInicio;
+      citaCli.fin    = nuevoFin;
+    }
+
+    // Actualizar eventos en calendarios
+    if (adminEntry) {
+      adminEntry.color = color;
+      if (decision === 'Confirmada') {
+        adminEntry.inicio = nuevoInicio;
+        adminEntry.fin    = nuevoFin;
+      }
+      if (adminEntry.fcEventAdmin) {
+        const prefijo = decision === 'Confirmada' ? '✅' : '❌';
+        adminEntry.fcEventAdmin.setProp('title', `${prefijo} ${citaCli.motivo}`);
+        adminEntry.fcEventAdmin.setProp('backgroundColor', color);
+        adminEntry.fcEventAdmin.setProp('borderColor', color);
+        if (decision === 'Confirmada') {
+          adminEntry.fcEventAdmin.setStart(nuevoInicio);
+          adminEntry.fcEventAdmin.setEnd(nuevoFin);
+        }
+      }
+      if (adminEntry.fcEventCliente) {
+        adminEntry.fcEventCliente.setProp('backgroundColor', color);
+        adminEntry.fcEventCliente.setProp('borderColor', color);
+        if (decision === 'Confirmada') {
+          adminEntry.fcEventCliente.setStart(nuevoInicio);
+          adminEntry.fcEventCliente.setEnd(nuevoFin);
+        }
+      }
+    }
+
+    renderSidebarAdmin();
+    renderSidebarCliente();
+  }
+
+  async function agregarCitaCliente({ motivo, inicio, fin, notas }) {
     const color = ESTADO_COLOR['Pendiente'];
-    const cita = { nombre, motivo, inicio, fin, notas, estado: 'Pendiente' };
+
+    // — Supabase: insertar solicitud cliente —
+    const { data, error } = await supabase
+      .from('citas')
+      .insert({
+        paciente_id: PACIENTE_ID_CLIENTE,
+        titulo:      motivo,
+        inicio: toUTC(inicio),
+        fin:    toUTC(fin),
+        color,
+        estado:      'Pendiente',
+        origen:      'cliente',
+        cli_notas:   notas || null,
+      })
+      .select()
+      .single();
+
+    if (error) { console.error('Error guardando solicitud:', error); return; }
+
+    const cita = { id: data.id, motivo, inicio, fin, notas, estado: 'Pendiente' };
     citasCliente.push(cita);
 
-    // — Vista cliente: evento en amarillo "Pendiente" —
     const fcEventCliente = calCliente.addEvent({
-      title: `${motivo} (${nombre})`,
+      title: motivo,
       start: inicio, end: fin,
       backgroundColor: color, borderColor: color,
       extendedProps: { cita },
     });
     renderSidebarCliente();
 
-    // — Vista admin: la solicitud llega como cita pendiente —
-    const adminEntry = { titulo: motivo, paciente: { nombre, apellido: '', telefono: '' }, inicio, fin, color, todoElDia: false, esSolicitudCliente: true, citaCliente: cita, fcEventCliente };
+    const adminEntry = {
+      id: data.id, titulo: motivo,
+      paciente: pacienteCliente,
+      inicio, fin, color,
+      todoElDia: false, esSolicitudCliente: true,
+      citaCliente: cita, fcEventCliente,
+    };
     citasAdmin.push(adminEntry);
+
     const fcEventAdmin = calAdmin.addEvent({
-      title: `⏳ ${motivo} · ${nombre}`,
+      title: `⏳ ${motivo}`,
       start: inicio, end: fin,
       backgroundColor: color, borderColor: color,
       extendedProps: { adminEntry },
     });
     adminEntry.fcEventAdmin = fcEventAdmin;
+
     renderSidebarAdmin();
   }
 
@@ -484,7 +722,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const modalCliente = document.getElementById('modal-cliente');
   const formCliente  = document.getElementById('form-cliente');
   const errorCli     = document.getElementById('cli-error');
-  const cliNombre    = document.getElementById('cli-nombre');
   const cliMotivo    = document.getElementById('cli-motivo');
   const cliInicio    = document.getElementById('cli-inicio');
   const cliFin       = document.getElementById('cli-fin');
@@ -507,12 +744,12 @@ document.addEventListener('DOMContentLoaded', () => {
     cliNombre.focus();
   }
 
-  formCliente.addEventListener('submit', (e) => {
+  formCliente.addEventListener('submit', async (e) => {
     e.preventDefault(); limpiarErrCli();
     const err = validarRango({ inicio: cliInicio.value, fin: cliFin.value });
     if (err) { mostrarErrCli(err); return; }
-    agregarCitaCliente({
-      nombre: cliNombre.value.trim(), motivo: cliMotivo.value.trim(),
+    await agregarCitaCliente({
+      motivo: cliMotivo.value.trim(),
       inicio: cliInicio.value, fin: cliFin.value, notas: cliNotas.value.trim(),
     });
     cerrarModales();
@@ -523,68 +760,109 @@ document.addEventListener('DOMContentLoaded', () => {
   /* ══════════════════════════════════════════════════════════
      MODAL DETALLE CITA (admin)
   ══════════════════════════════════════════════════════════ */
-  const modalDetalle     = document.getElementById('modal-detalle');
-  const detalleTitulo    = document.getElementById('detalle-titulo');
-  const detallePaciente  = document.getElementById('detalle-paciente');
-  const detalleHorario   = document.getElementById('detalle-horario');
-  const detalleNotas     = document.getElementById('detalle-notas');
-  const detalleNotasRow  = document.getElementById('detalle-notas-row');
-  const detalleEstado    = document.getElementById('detalle-estado');
-  const detalleAcciones  = document.getElementById('detalle-acciones');
-  const btnConfirmar     = document.getElementById('btn-confirmar');
-  const btnRechazar      = document.getElementById('btn-rechazar');
+  const modalDetalle    = document.getElementById('modal-detalle');
+  const detalleTitulo   = document.getElementById('detalle-titulo');
+  const detallePaciente = document.getElementById('detalle-paciente');
+  const detalleHorario  = document.getElementById('detalle-horario');
+  const detalleNotas    = document.getElementById('detalle-notas');
+  const detalleNotasRow = document.getElementById('detalle-notas-row');
+  const detalleEstado   = document.getElementById('detalle-estado');
+  const detalleAcciones = document.getElementById('detalle-acciones');
+  const btnConfirmar    = document.getElementById('btn-confirmar');
+  const btnRechazar     = document.getElementById('btn-rechazar');
 
-  let entryActual = null;
+  let entryActual   = null;
   let fcEventActual = null;
 
   function abrirModalDetalleCita(entry, fcEvent) {
     entryActual   = entry;
     fcEventActual = fcEvent;
 
-    const ini = new Date(entry.inicio);
-    const fin = new Date(entry.fin);
-    const fmt = { hour: '2-digit', minute: '2-digit' };
+    const ini      = new Date(entry.inicio);
+    const finDate  = new Date(entry.fin);
+    const fmt      = { hour: '2-digit', minute: '2-digit' };
     const fmtFecha = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
 
     detalleTitulo.textContent   = entry.titulo;
     detallePaciente.textContent = entry.paciente
       ? `${entry.paciente.nombre}${entry.paciente.apellido ? ' ' + entry.paciente.apellido : ''}`.trim()
       : '—';
-    detalleHorario.textContent  = `${ini.toLocaleDateString('es', fmtFecha)} · ${ini.toLocaleTimeString('es', fmt)} – ${fin.toLocaleTimeString('es', fmt)}`;
+    detalleHorario.textContent = `${ini.toLocaleDateString('es', fmtFecha)} · ${ini.toLocaleTimeString('es', fmt)} – ${finDate.toLocaleTimeString('es', fmt)}`;
 
-    const notas = entry.citaCliente?.notas || '';
-    if (notas) {
-      detalleNotas.textContent = notas;
-      detalleNotasRow.style.display = '';
-    } else {
-      detalleNotasRow.style.display = 'none';
-    }
+    const notas = entry.citaCliente?.notas || entry.descripcion || '';
+    if (notas) { detalleNotas.textContent = notas; detalleNotasRow.style.display = ''; }
+    else        { detalleNotasRow.style.display = 'none'; }
 
-    const estado = entry.citaCliente?.estado || 'Confirmada';
+    const estado = entry.citaCliente?.estado || (entry.esSolicitudCliente ? 'Pendiente' : 'Confirmada');
     const color  = ESTADO_COLOR[estado] || '#22c55e';
-    detalleEstado.textContent = estado;
-    detalleEstado.style.background   = `${color}20`;
-    detalleEstado.style.color        = color;
-    detalleEstado.style.borderColor  = `${color}40`;
+    detalleEstado.textContent       = estado;
+    detalleEstado.style.background  = `${color}20`;
+    detalleEstado.style.color       = color;
+    detalleEstado.style.borderColor = `${color}40`;
+    detalleAcciones.style.display   = estado === 'Pendiente' ? 'flex' : 'none';
 
-    // Mostrar acciones solo si sigue Pendiente
-    const esPendiente = estado === 'Pendiente';
-    detalleAcciones.style.display = esPendiente ? 'flex' : 'none';
-
-    // Limpiar error de conflicto anterior
     const msgConflicto = document.getElementById('detalle-conflicto');
     msgConflicto.textContent = ''; msgConflicto.classList.remove('visible');
 
     abrirOverlay(modalDetalle);
   }
 
-  function aplicarDecision(nuevoEstado) {
+  function calcularSiguienteHoraLibre(inicio, fin) {
+    const duracion = new Date(fin) - new Date(inicio); // duración en ms
+    // Todas las citas activas ese mismo día (no rechazadas/canceladas), excluyendo la actual
+    const mismaFecha = citasAdmin.filter(c => {
+      if (c === entryActual) return false;
+      if (c.esSolicitudCliente && (c.citaCliente?.estado === 'Rechazada' || c.citaCliente?.estado === 'Cancelada')) return false;
+      return new Date(c.inicio).toDateString() === new Date(inicio).toDateString();
+    });
+    // Ordenar por inicio
+    mismaFecha.sort((a, b) => new Date(a.inicio) - new Date(b.inicio));
+
+    // Intentar desde la hora de fin de la última cita que choca, avanzando de slot en slot
+    let candidato = new Date(fin);
+    const fechaBase = new Date(inicio);
+    const limiteMax = new Date(fechaBase.getFullYear(), fechaBase.getMonth(), fechaBase.getDate(), HORA_MAX, 0);
+
+    for (let i = 0; i < 20; i++) {
+      const candidatoFin = new Date(candidato.getTime() + duracion);
+      if (candidatoFin > limiteMax) return null; // No hay hueco ese día
+      const choca = mismaFecha.some(c => {
+        const cIni = new Date(c.inicio).getTime();
+        const cFin = new Date(c.fin).getTime();
+        return candidato.getTime() < cFin && candidatoFin.getTime() > cIni;
+      });
+      if (!choca) {
+        // Formato local YYYY-MM-DDTHH:mm
+        const fmt = d => {
+          const yyyy = d.getFullYear();
+          const mm   = String(d.getMonth() + 1).padStart(2, '0');
+          const dd   = String(d.getDate()).padStart(2, '0');
+          const hh   = String(d.getHours()).padStart(2, '0');
+          const min  = String(d.getMinutes()).padStart(2, '0');
+          return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+        };
+        return { inicio: fmt(candidato), fin: fmt(candidatoFin) };
+      }
+      // Avanzar al fin de la cita que choca
+      const chocantesFin = mismaFecha
+        .filter(c => new Date(c.inicio).getTime() < candidatoFin.getTime() && new Date(c.fin).getTime() > candidato.getTime())
+        .map(c => new Date(c.fin).getTime());
+      candidato = new Date(Math.max(...chocantesFin));
+    }
+    return null;
+  }
+
+  async function aplicarDecision(nuevoEstado) {
     if (!entryActual) return;
 
-    // Si se quiere confirmar, verificar conflicto con citas ya confirmadas
     if (nuevoEstado === 'Confirmada') {
-      // Excluir la propia entrada al buscar conflictos
-      const otrasCitas = citasAdmin.filter(c => c !== entryActual && c.citaCliente?.estado === 'Confirmada');
+      const otrasCitas = citasAdmin.filter(c => {
+        if (c === entryActual) return false;
+        // Cita del admin: siempre confirmada
+        if (!c.esSolicitudCliente) return true;
+        // Solicitud del cliente: solo si está confirmada
+        return c.citaCliente?.estado === 'Confirmada';
+      });
       const newIni = new Date(entryActual.inicio).getTime();
       const newFin = new Date(entryActual.fin).getTime();
       const choque = otrasCitas.find(c => {
@@ -603,27 +881,71 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // Limpiar error si existía
+    // — Caso Reprogramada: calcular siguiente hora libre y guardar contraoferta —
+    if (nuevoEstado === 'Reprogramada') {
+      const libre = calcularSiguienteHoraLibre(entryActual.inicio, entryActual.fin);
+      if (!libre) {
+        const msgEl = document.getElementById('detalle-conflicto');
+        msgEl.textContent = 'No hay horas disponibles ese día para reprogramar.';
+        msgEl.classList.add('visible');
+        return;
+      }
+      const { error } = await supabase
+        .from('citas')
+        .update({
+          estado:             'Reprogramada',
+          inicio_propuesto:   toUTC(libre.inicio),
+          fin_propuesto:      toUTC(libre.fin),
+        })
+        .eq('id', entryActual.id);
+
+      if (error) { console.error('Error reprogramando:', error); return; }
+
+      const color = ESTADO_COLOR['Reprogramada'];
+      if (entryActual.citaCliente) {
+        entryActual.citaCliente.estado          = 'Reprogramada';
+        entryActual.citaCliente.inicioPropuesto = libre.inicio;
+        entryActual.citaCliente.finPropuesto    = libre.fin;
+      }
+      entryActual.color = color;
+
+      if (fcEventActual) {
+        fcEventActual.setProp('title', `🔄 ${entryActual.titulo}`);
+        fcEventActual.setProp('backgroundColor', color);
+        fcEventActual.setProp('borderColor', color);
+      }
+      if (entryActual.fcEventCliente) {
+        entryActual.fcEventCliente.setProp('backgroundColor', color);
+        entryActual.fcEventCliente.setProp('borderColor', color);
+      }
+
+      renderSidebarAdmin();
+      renderSidebarCliente();
+      cerrarModales();
+      return;
+    }
+
+    // — Supabase: actualizar estado —
+    const { error } = await supabase
+      .from('citas')
+      .update({ estado: nuevoEstado })
+      .eq('id', entryActual.id);
+
+    if (error) { console.error('Error actualizando estado:', error); return; }
+
     const msgEl = document.getElementById('detalle-conflicto');
     msgEl.textContent = ''; msgEl.classList.remove('visible');
 
     const color = ESTADO_COLOR[nuevoEstado];
-
-    // Actualizar estado en la cita del cliente
-    if (entryActual.citaCliente) {
-      entryActual.citaCliente.estado = nuevoEstado;
-    }
+    if (entryActual.citaCliente) entryActual.citaCliente.estado = nuevoEstado;
     entryActual.color = color;
 
-    // Actualizar evento en cal admin
     if (fcEventActual) {
       const prefijo = nuevoEstado === 'Confirmada' ? '✅' : '❌';
       fcEventActual.setProp('title', `${prefijo} ${entryActual.titulo} · ${entryActual.paciente?.nombre || ''}`);
       fcEventActual.setProp('backgroundColor', color);
       fcEventActual.setProp('borderColor', color);
     }
-
-    // Actualizar evento en cal cliente
     if (entryActual.fcEventCliente) {
       entryActual.fcEventCliente.setProp('backgroundColor', color);
       entryActual.fcEventCliente.setProp('borderColor', color);
@@ -636,6 +958,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   btnConfirmar.addEventListener('click', () => aplicarDecision('Confirmada'));
   btnRechazar.addEventListener('click',  () => aplicarDecision('Rechazada'));
+  document.getElementById('btn-reprogramar').addEventListener('click', () => aplicarDecision('Reprogramada'));
   document.getElementById('modal-detalle-cerrar').addEventListener('click', cerrarModales);
 
   /* ══════════════════════════════════════════════════════════
@@ -678,6 +1001,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (modoCliente) { calCliente.updateSize(); renderSidebarCliente(); }
     else              { calAdmin.updateSize();   renderSidebarAdmin(); }
   });
+
+  /* ══════════════════════════════════════════════════════════
+     INIT
+  ══════════════════════════════════════════════════════════ */
+  await cargarDatos();
 
   window.agregarEvento      = agregarEvento;
   window.agregarCitaCliente = agregarCitaCliente;
