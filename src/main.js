@@ -447,7 +447,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function agregarEvento({ titulo, paciente, inicio, fin, color, descripcion, todoElDia = false }) {
     if (!titulo || !inicio || !fin) return null;
 
-    // — Supabase: insertar cita admin —
     const { data, error } = await supabase
       .from('citas')
       .insert({
@@ -568,7 +567,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       const li = document.createElement('li');
       li.className = 'pendiente-item';
 
-      // Si está reprogramada y hay contraoferta, mostrar panel especial
       if (ev.estado === 'Reprogramada' && ev.inicioPropuesto) {
         const iniP  = new Date(ev.inicioPropuesto);
         const finP  = new Date(ev.finPropuesto);
@@ -669,7 +667,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function agregarCitaCliente({ motivo, inicio, fin, notas }) {
     const color = ESTADO_COLOR['Pendiente'];
 
-    // — Supabase: insertar solicitud cliente —
     const { data, error } = await supabase
       .from('citas')
       .insert({
