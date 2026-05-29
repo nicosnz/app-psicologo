@@ -5,6 +5,7 @@ import { citasAdmin, citasCliente, pacienteCliente } from '../shared/estado.js';
 import { nombreCompleto } from './pacientes.js';
 import { renderSidebarAdmin } from './sidebar.js';
 import { renderSidebarCliente } from '../cliente/sidebar.js';
+import { agregarCita } from './agregarCita.js';
 
 /**
  * Carga todas las citas de Supabase (origen admin y cliente) y las registra
@@ -83,42 +84,17 @@ export async function cargarCitas(calAdmin, calCliente) {
 /**
  * Inserta una cita nueva (origen admin) en Supabase y la añade al estado + calendario.
  */
-export async function agregarEvento({ titulo, paciente, inicio, fin, color, descripcion, todoElDia = false }, calAdmin) {
-  if (!titulo || !inicio || !fin) return null;
+export async function agregarEvento(
+  { titulo, paciente, inicio, fin, color, descripcion, todoElDia = false },
+  calAdmin
+) {
+  
+  const cita = await agregarCita(titulo, paciente, inicio, fin, color, descripcion, todoElDia = false ,calAdmin)
+  if(cita !== null){
+    renderSidebarAdmin();
 
-  const { data, error } = await supabase
-    .from('citas')
-    .insert({
-      paciente_id:  paciente?.id || null,
-      titulo,
-      descripcion:  descripcion || null,
-      inicio:       toUTC(inicio),
-      fin:          toUTC(fin),
-      todo_el_dia:  todoElDia,
-      color:        color || '#22c55e',
-      estado:       'Confirmada',
-      origen:       'admin',
-    })
-    .select()
-    .single();
-
-  if (error) { console.error('Error guardando cita:', error); return null; }
-
-  const entry = {
-    id: data.id, titulo, paciente,
-    inicio, fin,
-    color: color || '#22c55e',
-    todoElDia, esSolicitudCliente: false,
-  };
-  citasAdmin.push(entry);
-
-  const label = paciente ? `${titulo} · ${nombreCompleto(paciente)}` : titulo;
-  calAdmin.addEvent({
-    title: label, start: inicio, end: fin, allDay: todoElDia,
-    backgroundColor: color, borderColor: color,
-    extendedProps: { adminEntry: entry },
-  });
-
-  renderSidebarAdmin();
-  return entry;
+   return cita;
+  }
+  return null
+  
 }
