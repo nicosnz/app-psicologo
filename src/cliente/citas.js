@@ -1,16 +1,13 @@
 import supabase from '../services/supabase.js';
 import { ESTADO_COLOR, PACIENTE_ID_CLIENTE } from '../shared/config.js';
-import { toUTC, esDiaLaboral } from '../shared/fecha.js';
-import { HORA_MIN, HORA_MAX } from '../shared/config.js';
+import { toUTC } from '../shared/fecha.js';
 import { citasAdmin, citasCliente, pacienteCliente } from '../shared/estado.js';
+import { validarRango } from '../shared/validaciones.js';
 import { renderSidebarAdmin } from '../psicologo/sidebar.js';
 import { renderSidebarCliente } from './sidebar.js';
 
-
 export async function agregarCitaCliente({ motivo, inicio, fin, notas }, calAdmin, calCliente) {
-  const fechaInicio = new Date(inicio);
-  if (!esDiaLaboral(fechaInicio)) return null;
-  if (fechaInicio.getHours() < HORA_MIN || fechaInicio.getHours() >= HORA_MAX) return null;
+  if (validarRango({ inicio, fin })) return null;
 
   const color = ESTADO_COLOR['Pendiente'];
 
