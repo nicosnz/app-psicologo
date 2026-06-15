@@ -1,18 +1,17 @@
 import supabase from '../services/supabase.js';
 import { ESTADO_COLOR, PACIENTE_ID_CLIENTE } from '../shared/config.js';
-import { toUTC } from '../shared/fecha.js';
+import { toUTC, esDiaLaboral } from '../shared/fecha.js';
+import { HORA_MIN, HORA_MAX } from '../shared/config.js';
 import { citasAdmin, citasCliente, pacienteCliente } from '../shared/estado.js';
 import { renderSidebarAdmin } from '../psicologo/sidebar.js';
 import { renderSidebarCliente } from './sidebar.js';
 
-/**
- * Guarda una solicitud de cita del cliente en Supabase y la refleja
- * en ambos calendarios y sidebars.
- * @param {{ motivo, inicio, fin, notas }} datos
- * @param {Calendar} calAdmin
- * @param {Calendar} calCliente
- */
+
 export async function agregarCitaCliente({ motivo, inicio, fin, notas }, calAdmin, calCliente) {
+  const fechaInicio = new Date(inicio);
+  if (!esDiaLaboral(fechaInicio)) return null;
+  if (fechaInicio.getHours() < HORA_MIN || fechaInicio.getHours() >= HORA_MAX) return null;
+
   const color = ESTADO_COLOR['Pendiente'];
 
   const { data, error } = await supabase
