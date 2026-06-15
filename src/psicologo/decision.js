@@ -1,6 +1,6 @@
 import supabase from '../services/supabase.js';
-import { ESTADO_COLOR, HORA_MAX } from '../shared/config.js';
-import { toUTC, formatLocalDatetime } from '../shared/fecha.js';
+import { ESTADO_COLOR, HORA_MAX, HORA_MIN } from '../shared/config.js';
+import { toUTC, formatLocalDatetime, esDiaLaboral } from '../shared/fecha.js';
 import { citasAdmin } from '../shared/estado.js';
 import { renderSidebarAdmin } from './sidebar.js';
 import { renderSidebarCliente } from '../cliente/sidebar.js';
@@ -49,6 +49,10 @@ export function calcularSiguienteHoraLibre(inicio, fin, citas, entryExcluir) {
 }
 
 export function detectarConflictoParaConfirmar(entry, citas) {
+  const fecha = new Date(entry.inicio);
+  if (!esDiaLaboral(fecha)) return { fueraDeHorario: true };
+  if (fecha.getHours() < HORA_MIN || fecha.getHours() >= HORA_MAX) return { fueraDeHorario: true };
+
   const otras  = citas.filter(c => {
     if (c === entry) return false;
     if (!c.esSolicitudCliente) return true;
