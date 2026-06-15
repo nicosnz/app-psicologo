@@ -7,6 +7,7 @@ import { renderSidebarAdmin } from '../psicologo/sidebar.js';
 import { renderSidebarCliente } from './sidebar.js';
 
 export async function agregarCitaCliente({ motivo, inicio, fin, notas }, calAdmin, calCliente) {
+  
   if (validarRango({ inicio, fin })) return null;
 
   const color = ESTADO_COLOR['Pendiente'];

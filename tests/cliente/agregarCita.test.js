@@ -66,3 +66,23 @@ describe('HU-02 agregar tests para Validacion de citas fuera de horario laboral'
     expect(supabase.from).not.toHaveBeenCalled();
   });
 });
+
+describe('HU-02 test para validacion de campos obligatorios al solicitar cita', () => {
+  let calAdmin, calCliente;
+
+  beforeEach(() => {
+    calAdmin   = { addEvent: vi.fn() };
+    calCliente = { addEvent: vi.fn() };
+    vi.clearAllMocks();
+  });
+
+  it('HU-02 debería bloquear la solicitud si todos los campos obligatorios están vacíos', async () => {
+    const resultado = await agregarCitaCliente(
+      { motivo: '', inicio: '2026-06-15T10:00', fin: '2026-06-15T11:00', notas: '' },
+      calAdmin, calCliente
+    );
+
+    expect(resultado).toBeNull();
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
+});
