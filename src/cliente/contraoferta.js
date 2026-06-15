@@ -5,11 +5,7 @@ import { citasAdmin } from '../shared/estado.js';
 import { renderSidebarAdmin } from '../psicologo/sidebar.js';
 import { renderSidebarCliente } from './sidebar.js';
 
-/**
- * Acepta o rechaza la contraoferta de reprogramación propuesta por el psicólogo.
- * @param {Object} citaCli   - Objeto de cita del cliente (de citasCliente[])
- * @param {'Confirmada'|'Rechazada'} decision
- */
+
 export async function responderContraoferta(citaCli, decision) {
   const adminEntry  = citasAdmin.find(c => c.citaCliente === citaCli);
   const nuevoEstado = decision;
