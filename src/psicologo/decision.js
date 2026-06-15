@@ -5,7 +5,6 @@ import { citasAdmin } from '../shared/estado.js';
 import { renderSidebarAdmin } from './sidebar.js';
 import { renderSidebarCliente } from '../cliente/sidebar.js';
 
-/* ── Estado local del modal detalle ────────────────────── */
 let entryActual   = null;
 let fcEventActual = null;
 
@@ -14,19 +13,18 @@ export function setEntryActual(entry, fcEvent) {
   fcEventActual = fcEvent;
 }
 
-/* ── Calcular siguiente hora libre ese día ─────────────── */
-function calcularSiguienteHoraLibre(inicio, fin) {
-  const duracion  = new Date(fin) - new Date(inicio);
-  const mismaFecha = citasAdmin.filter(c => {
-    if (c === entryActual) return false;
+export function calcularSiguienteHoraLibre(inicio, fin, citas, entryExcluir) {
+  const duracion   = new Date(fin) - new Date(inicio);
+  const mismaFecha = citas.filter(c => {
+    if (c === entryExcluir) return false;
     if (c.esSolicitudCliente && (c.citaCliente?.estado === 'Rechazada' || c.citaCliente?.estado === 'Cancelada')) return false;
     return new Date(c.inicio).toDateString() === new Date(inicio).toDateString();
   });
   mismaFecha.sort((a, b) => new Date(a.inicio) - new Date(b.inicio));
 
-  let candidato = new Date(fin);
-  const fechaBase  = new Date(inicio);
-  const limiteMax  = new Date(fechaBase.getFullYear(), fechaBase.getMonth(), fechaBase.getDate(), HORA_MAX, 0);
+  let candidato   = new Date(fin);
+  const fechaBase = new Date(inicio);
+  const limiteMax = new Date(fechaBase.getFullYear(), fechaBase.getMonth(), fechaBase.getDate(), HORA_MAX, 0);
 
   for (let i = 0; i < 20; i++) {
     const candidatoFin = new Date(candidato.getTime() + duracion);
@@ -50,26 +48,28 @@ function calcularSiguienteHoraLibre(inicio, fin) {
   return null;
 }
 
-/* ── Aplicar decisión del psicólogo ────────────────────── */
+export function detectarConflictoParaConfirmar(entry, citas) {
+  const otras  = citas.filter(c => {
+    if (c === entry) return false;
+    if (!c.esSolicitudCliente) return true;
+    return c.citaCliente?.estado === 'Confirmada';
+  });
+  const newIni = new Date(entry.inicio).getTime();
+  const newFin = new Date(entry.fin).getTime();
+  return otras.find(c => {
+    const cIni = new Date(c.inicio).getTime();
+    const cFin = new Date(c.fin).getTime();
+    return newIni < cFin && newFin > cIni;
+  }) || null;
+}
+
 export async function aplicarDecision(nuevoEstado, { onCerrar }) {
   if (!entryActual) return;
 
   const msgEl = document.getElementById('detalle-conflicto');
 
-  // — Validar conflicto antes de confirmar —
   if (nuevoEstado === 'Confirmada') {
-    const otrasCitas = citasAdmin.filter(c => {
-      if (c === entryActual) return false;
-      if (!c.esSolicitudCliente) return true;
-      return c.citaCliente?.estado === 'Confirmada';
-    });
-    const newIni = new Date(entryActual.inicio).getTime();
-    const newFin = new Date(entryActual.fin).getTime();
-    const choque = otrasCitas.find(c => {
-      const cIni = new Date(c.inicio).getTime();
-      const cFin = new Date(c.fin).getTime();
-      return newIni < cFin && newFin > cIni;
-    });
+    const choque = detectarConflictoParaConfirmar(entryActual, citasAdmin);
     if (choque) {
       const cfIni = new Date(choque.inicio);
       const cfFin = new Date(choque.fin);
@@ -80,9 +80,8 @@ export async function aplicarDecision(nuevoEstado, { onCerrar }) {
     }
   }
 
-  // — Reprogramar: calcular siguiente hora libre y guardar contraoferta —
   if (nuevoEstado === 'Reprogramada') {
-    const libre = calcularSiguienteHoraLibre(entryActual.inicio, entryActual.fin);
+    const libre = calcularSiguienteHoraLibre(entryActual.inicio, entryActual.fin, citasAdmin, entryActual);
     if (!libre) {
       msgEl.textContent = 'No hay horas disponibles ese día para reprogramar.';
       msgEl.classList.add('visible');
@@ -124,7 +123,6 @@ export async function aplicarDecision(nuevoEstado, { onCerrar }) {
     return;
   }
 
-  // — Confirmar / Rechazar —
   const { error } = await supabase
     .from('citas')
     .update({ estado: nuevoEstado })

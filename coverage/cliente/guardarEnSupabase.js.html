@@ -3,7 +3,7 @@
 <html lang="en">
 
 <head>
-    <title>Code coverage report for cliente/citas.js</title>
+    <title>Code coverage report for cliente/guardarEnSupabase.js</title>
     <meta charset="utf-8" />
     <link rel="stylesheet" href="../prettify.css" />
     <link rel="stylesheet" href="../base.css" />
@@ -19,34 +19,34 @@
 <body>
 <div class='wrapper'>
     <div class='pad1'>
-        <h1><a href="../index.html">All files</a> / <a href="index.html">cliente</a> citas.js</h1>
+        <h1><a href="../index.html">All files</a> / <a href="index.html">cliente</a> guardarEnSupabase.js</h1>
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">44.44% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>4/9</span>
+                <span class='fraction'>0/5</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">66.66% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>6/9</span>
+                <span class='fraction'>0/4</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>1/1</span>
+                <span class='fraction'>0/1</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">33.33% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>2/6</span>
+                <span class='fraction'>0/3</span>
             </div>
         
             
@@ -77,35 +77,62 @@
 <a name='L12'></a><a href='#L12'>12</a>
 <a name='L13'></a><a href='#L13'>13</a>
 <a name='L14'></a><a href='#L14'>14</a>
-<a name='L15'></a><a href='#L15'>15</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { ESTADO_COLOR } from '../shared/config.js';
-import { validarRango } from '../shared/validaciones.js';
-import { guardarEnSupabase } from './guardarEnSupabase.js';
-import { registrarEnCalendarios } from './registrarEnCalendario.js';
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import supabase from '../services/supabase.js';
+import { PACIENTE_ID_CLIENTE } from '../shared/config.js';
+import { toUTC } from '../shared/fecha.js';
 &nbsp;
-export async function agregarCitaCliente({ motivo, inicio, fin, notas }, calAdmin, calCliente) {
-  if (!motivo || !inicio || !fin) return null;
-  <span class="missing-if-branch" title="else path not taken" >E</span>if (validarRango({ inicio, fin })) return null;
+export async function <span class="fstat-no" title="function not covered" >guardarEnSupabase(</span>{ motivo, inicio, fin, notas, color }) {
+  const { data, error } = <span class="cstat-no" title="statement not covered" >await supabase</span>
+    .from('citas')
+    .insert({
+      paciente_id: PACIENTE_ID_CLIENTE,
+      titulo:      motivo,
+      inicio:      toUTC(inicio),
+      fin:         toUTC(fin),
+      color,
+      estado:      'Pendiente',
+      origen:      'cliente',
+      cli_notas:   notas || null,
+    })
+    .select()
+    .single();
 &nbsp;
-  const color = <span class="cstat-no" title="statement not covered" >ESTADO_COLOR['Pendiente'];</span>
-  const data  = <span class="cstat-no" title="statement not covered" >await guardarEnSupabase({ motivo, inicio, fin, notas, color });</span>
-<span class="cstat-no" title="statement not covered" >  if (!data) <span class="cstat-no" title="statement not covered" >return null;</span></span>
-&nbsp;
-<span class="cstat-no" title="statement not covered" >  registrarEnCalendarios(data, { motivo, inicio, fin, notas, color }, calAdmin, calCliente);</span>
-}</pre></td></tr></table></pre>
+<span class="cstat-no" title="statement not covered" >  if (error) { <span class="cstat-no" title="statement not covered" >console.error('Error guardando solicitud:', error); <span class="cstat-no" title="statement not covered" ></span>return null; </span>}</span>
+<span class="cstat-no" title="statement not covered" >  return data;</span>
+}
+&nbsp;</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
             </div><!-- /wrapper -->

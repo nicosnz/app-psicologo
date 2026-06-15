@@ -7,11 +7,7 @@ import { renderSidebarAdmin } from './sidebar.js';
 import { renderSidebarCliente } from '../cliente/sidebar.js';
 import { agregarCita } from './agregarCita.js';
 
-/**
- * Carga todas las citas de Supabase (origen admin y cliente) y las registra
- * en los arrays de estado + en los calendarios de FullCalendar.
- * Los calendarios se pasan como parámetros para no crear dependencia circular.
- */
+
 export async function cargarCitas(calAdmin, calCliente) {
   const { data: citas, error } = await supabase
     .from('citas')
@@ -40,7 +36,6 @@ export async function cargarCitas(calAdmin, calCliente) {
       });
 
     } else {
-      // origen === 'cliente'
       const citaCliente = {
         id: c.id, motivo: c.titulo,
         inicio: toLocal(c.inicio), fin: toLocal(c.fin),
@@ -81,9 +76,7 @@ export async function cargarCitas(calAdmin, calCliente) {
   renderSidebarCliente();
 }
 
-/**
- * Inserta una cita nueva (origen admin) en Supabase y la añade al estado + calendario.
- */
+
 export async function agregarEvento(
   { titulo, paciente, inicio, fin, color, descripcion, todoElDia = false },
   calAdmin
