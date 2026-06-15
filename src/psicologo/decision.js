@@ -1,6 +1,7 @@
 import supabase from '../services/supabase.js';
-import { ESTADO_COLOR, HORA_MAX, HORA_MIN } from '../shared/config.js';
-import { toUTC, formatLocalDatetime, esDiaLaboral } from '../shared/fecha.js';
+import { ESTADO_COLOR, HORA_MAX } from '../shared/config.js';
+import { toUTC, formatLocalDatetime } from '../shared/fecha.js';
+import { validarRango } from '../shared/validaciones.js';
 import { citasAdmin } from '../shared/estado.js';
 import { renderSidebarAdmin } from './sidebar.js';
 import { renderSidebarCliente } from '../cliente/sidebar.js';
@@ -49,22 +50,25 @@ export function calcularSiguienteHoraLibre(inicio, fin, citas, entryExcluir) {
 }
 
 export function detectarConflictoParaConfirmar(entry, citas) {
-  const fecha = new Date(entry.inicio);
-  if (!esDiaLaboral(fecha)) return { fueraDeHorario: true };
-  if (fecha.getHours() < HORA_MIN || fecha.getHours() >= HORA_MAX) return { fueraDeHorario: true };
+  const errRango = validarRango({ inicio: entry.inicio, fin: entry.fin });
+  if (errRango) return errRango;
 
   const otras  = citas.filter(c => {
     if (c === entry) return false;
     if (!c.esSolicitudCliente) return true;
     return c.citaCliente?.estado === 'Confirmada';
   });
-  const newIni = new Date(entry.inicio).getTime();
-  const newFin = new Date(entry.fin).getTime();
-  return otras.find(c => {
-    const cIni = new Date(c.inicio).getTime();
-    const cFin = new Date(c.fin).getTime();
-    return newIni < cFin && newFin > cIni;
-  }) || null;
+  const new_date_cita_inicio = new Date(entry.inicio).getTime();
+  const new_date_cita_fin = new Date(entry.fin).getTime();
+  const choque = otras.find(c => {
+    const cita_inicio = new Date(c.inicio).getTime();
+    const cita_fin = new Date(c.fin).getTime();
+    return new_date_cita_inicio < cita_fin && new_date_cita_fin > cita_inicio;
+  });
+  if (!choque) return null;
+
+  const fmt = { hour: '2-digit', minute: '2-digit' };
+  return `No se puede confirmar: hay una cita de ${new Date(choque.inicio).toLocaleTimeString('es', fmt)} a ${new Date(choque.fin).toLocaleTimeString('es', fmt)}. Intenta reprogramar.`;
 }
 
 export async function aplicarDecision(nuevoEstado, { onCerrar }) {
@@ -73,15 +77,8 @@ export async function aplicarDecision(nuevoEstado, { onCerrar }) {
   const msgEl = document.getElementById('detalle-conflicto');
 
   if (nuevoEstado === 'Confirmada') {
-    const choque = detectarConflictoParaConfirmar(entryActual, citasAdmin);
-    if (choque) {
-      const cfIni = new Date(choque.inicio);
-      const cfFin = new Date(choque.fin);
-      const fmt   = { hour: '2-digit', minute: '2-digit' };
-      msgEl.textContent = `No se puede confirmar: hay una cita de ${cfIni.toLocaleTimeString('es', fmt)} a ${cfFin.toLocaleTimeString('es', fmt)}. Intenta reprogramar.`;
-      msgEl.classList.add('visible');
-      return;
-    }
+    const error = detectarConflictoParaConfirmar(entryActual, citasAdmin);
+    if (error) { msgEl.textContent = error; msgEl.classList.add('visible'); return; }
   }
 
   if (nuevoEstado === 'Reprogramada') {
