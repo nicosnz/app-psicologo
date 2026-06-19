@@ -1,7 +1,8 @@
 import supabase from '../services/supabase.js';
-import { toUTC, toLocal } from '../shared/fecha.js';
-// import { citasAdmin, citasCliente, pacienteCliente } from '../shared/estado.js';
-// import { nombreCompleto } from './pacientes.js';
+import { toUTC } from '../shared/fecha.js';
+
+const HORA_MIN = 9;
+const HORA_MAX = 21;
 
 export async function agregarCita(
    titulo, paciente, inicio, fin, color, descripcion, todoElDia = false ,
@@ -12,7 +13,7 @@ export async function agregarCita(
   const horaInicio = new Date(inicio).getHours();
   const horaFin = new Date(fin).getHours();
 
-  if (horaInicio < 9 || horaFin > 21) {
+  if (horaInicio < HORA_MIN || horaFin > HORA_MAX) {
     return null;
   }
 
