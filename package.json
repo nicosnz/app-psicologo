@@ -9,10 +9,13 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src/"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.7",
+    "eslint": "^10.5.0",
+    "eslint-plugin-sonarjs": "^4.1.0",
     "jsdom": "^29.1.1",
     "vite": "^7.3.1",
     "vitest": "^4.1.7"

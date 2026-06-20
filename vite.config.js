@@ -18,7 +18,9 @@ export default defineConfig({
         'src/ui/*.js',
         'src/cliente/sidebar.js',
         'src/psicologo/sidebar.js',
-        'src/services/*.js'
+        'src/services/*.js',
+        'src/cliente/guardarEnSupabase.js',
+        'src/cliente/registrarEnCalendario.js'
 
 
 
